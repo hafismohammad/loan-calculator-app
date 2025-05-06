@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import {
   TextField, Button, Grid, Typography, MenuItem,
 } from '@mui/material';
-import { calculateEMI } from '../utils/calculateEMI';
-import axios from 'axios';
 import AmortizationTable from './AmortizationTable';
+import useExchangeRate from '../hook/useExchangeRate';
+import useEmiCalculator from '../hook/useEmiCalculator';
 
 function LoanForm() {
   const [amount, setAmount] = useState(100000);
@@ -13,9 +13,11 @@ function LoanForm() {
   const [emi, setEmi] = useState(null);
   const [schedule, setSchedule] = useState([]);
   const [currency, setCurrency] = useState('INR');
-  const [conversionRate, setConversionRate] = useState(1);
 
-  const handleCalculate = async () => {
+  const { conversionRate, error } = useExchangeRate(currency);
+  const { calculateEMI, generateSchedule } = useEmiCalculator();
+
+  const handleCalculate = () => {
     const numericYears = parseFloat(years);
 
     if (!numericYears || numericYears <= 0 || amount <= 0 || rate <= 0) {
@@ -25,38 +27,9 @@ function LoanForm() {
 
     const months = numericYears * 12;
     const monthlyEmi = calculateEMI(amount, rate, months);
+    const sch = generateSchedule(amount, rate, months, monthlyEmi);
+
     setEmi(monthlyEmi);
-
-    let newConversionRate = 1;
-    if (currency !== 'INR') {
-      try {
-        const res = await axios.get('https://api.exchangerate-api.com/v4/latest/INR');
-        newConversionRate = res.data.rates[currency] || 1;
-        setConversionRate(newConversionRate);
-      } catch (err) {
-        alert("Currency conversion failed. Showing EMI in INR.",err);
-        setConversionRate(1);
-      }
-    } else {
-      setConversionRate(1);
-    }
-
-    const r = rate / 12 / 100;
-    let balance = amount;
-    const sch = [];
-
-    for (let i = 1; i <= months; i++) {
-      const interest = balance * r;
-      const principal = monthlyEmi - interest;
-      balance -= principal;
-      sch.push({
-        month: i,
-        principal: principal.toFixed(2),
-        interest: interest.toFixed(2),
-        balance: balance > 0 ? balance.toFixed(2) : "0.00",
-      });
-    }
-
     setSchedule(sch);
   };
 
@@ -112,6 +85,12 @@ function LoanForm() {
           </Button>
         </Grid>
       </Grid>
+
+      {error && (
+        <Typography color="error" style={{ marginTop: '10px' }}>
+          {error}
+        </Typography>
+      )}
 
       {emi !== null && (
         <Grid item xs={12}>
